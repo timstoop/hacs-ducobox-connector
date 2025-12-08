@@ -15,9 +15,23 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.device_registry import DeviceInfo
 import time
 import json
+from datetime import timedelta
+from requests.adapters import HTTPAdapter
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class TimeoutHTTPAdapter(HTTPAdapter):
+    """HTTPAdapter with default timeout."""
+
+    def __init__(self, timeout, *args, **kwargs):
+        self.timeout = timeout
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        kwargs.setdefault('timeout', self.timeout)
+        return super().send(request, **kwargs)
 
 class DucoboxCoordinator(DataUpdateCoordinator):
     """Coordinator to manage data updates for Ducobox sensors."""
@@ -29,6 +43,13 @@ class DucoboxCoordinator(DataUpdateCoordinator):
             name="Ducobox Connectivity Board",
             update_interval=SCAN_INTERVAL,
         )
+
+        # Add timeout adapter to prevent coordinator stalling
+        # The ducopy library doesn't support timeout parameters, so we add it via adapter
+        timeout_seconds = (SCAN_INTERVAL - timedelta(seconds=5)).total_seconds()
+        adapter = TimeoutHTTPAdapter(timeout=timeout_seconds)
+        duco_client.client.session.mount("http://", adapter)
+        duco_client.client.session.mount("https://", adapter)
 
         self.duco_client = duco_client
         self._static_data = None
